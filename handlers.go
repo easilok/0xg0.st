@@ -15,7 +15,7 @@ import (
 
 // Handles and processes the home page
 func home(w http.ResponseWriter, r *http.Request) {
-	tmpl.Execute(w, template.HTML(fmt.Sprintf(`http://%s/`, r.Host)))
+	tmpl.Execute(w, template.HTML(fmt.Sprintf(`https://%s/`, r.Host)))
 }
 
 // Upload a file, save and attribute a hash
@@ -78,7 +78,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// All good
-	fmt.Fprintf(w, "OK, Successfully Uploaded\n http://%s/%s\n", r.Host, uuid)
+	fmt.Fprintf(w, "OK, Successfully Uploaded\n https://%s/%s\n", r.Host, uuid)
 }
 
 // Gets the file using the provided UUID on the URL
