@@ -1,0 +1,18 @@
+networks:
+  reverse_proxy:
+    external: true
+    name: reverse_proxy
+
+services:
+  dumpbin:
+      build:
+          context: .
+      container_name: 0xg0.st
+      restart: unless-stopped
+      volumes:
+        - ./storage:/0xg0/storage
+      networks:
+        - reverse_proxy
+      ports:
+        - "5278:80"
+
