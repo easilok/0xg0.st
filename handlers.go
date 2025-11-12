@@ -4,14 +4,36 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/golang/glog"
 )
+
+var customContentType = map[string]string{
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".png":  "image/png",
+	".gif":  "image/gif",
+	".html": "text/html",
+	".txt":  "text/plain",
+	".sh":   "text/plain",
+	".m3u":  "text/plain",
+	".pls":  "text/plain",
+	".org":  "text/plain",
+	".pdf":  "application/pdf",
+}
+
+// Extension convertion map
+var extConvertions = map[string]string{
+	".sh":  ".txt",
+	".bat": ".txt",
+	".m3u": ".txt",
+	".pls": ".txt",
+}
 
 // Handles and processes the home page
 func home(w http.ResponseWriter, r *http.Request) {
@@ -21,9 +43,6 @@ func home(w http.ResponseWriter, r *http.Request) {
 // Upload a file, save and attribute a hash
 func upload(w http.ResponseWriter, r *http.Request) {
 	glog.Info("Upload request recieved")
-
-	var uuid string = GenerateUUID()
-	var filepath string = fmt.Sprintf("./storage/%s/", uuid)
 
 	// Prepare to get the file
 	file, header, err := r.FormFile("file")
@@ -40,16 +59,9 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Creates directory with UUID
-	_, err = os.Stat(filepath)
-	for !os.IsNotExist(err) {
-		uuid = GenerateUUID()
-		filepath := fmt.Sprintf("./storage/%s/", uuid)
-		_, err = os.Stat(filepath)
-	}
-
-	if err := os.MkdirAll(filepath, 0777); err != nil {
-		glog.Error("Error saving file on server...")
+	const storagePath = "./storage"
+	if err := os.MkdirAll(storagePath, 0777); err != nil {
+		glog.Error("Error creating storage on server...")
 		glog.Errorf("Error: %s", err.Error())
 
 		w.WriteHeader(http.StatusInternalServerError)
@@ -57,7 +69,26 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	f, err := os.OpenFile(path.Join(filepath, header.Filename), os.O_WRONLY|os.O_CREATE, 0777)
+	// Creates filename with UUID
+	var uuid string = GenerateUUID()
+	// Adds inherited extension
+	var ext = filepath.Ext(header.Filename)
+	if len(ext) > 0 {
+		newExt, ok := extConvertions[ext]
+		if ok {
+			ext = newExt
+		}
+	}
+	var filename string = fmt.Sprintf("%s%s", uuid, ext)
+	// Ensures file is unique
+	_, err = os.Stat(filename)
+	for !os.IsNotExist(err) {
+		uuid = GenerateUUID()
+		filename := fmt.Sprintf("%s%s", uuid, ext)
+		_, err = os.Stat(filename)
+	}
+
+	f, err := os.OpenFile(path.Join(storagePath, filename), os.O_WRONLY|os.O_CREATE, 0777)
 	if err != nil {
 		glog.Errorf("Error creating file.")
 		glog.Errorf("Error: %s", err.Error())
@@ -78,38 +109,33 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// All good
-	fmt.Fprintf(w, "OK, Successfully Uploaded\n https://%s/%s\n", r.Host, uuid)
+	fmt.Fprintf(w, "OK, Successfully Uploaded\n https://%s/%s\n", r.Host, filename)
 }
 
 // Gets the file using the provided UUID on the URL
 func getFile(w http.ResponseWriter, r *http.Request) {
-	glog.Info("Retrieve request received")
-	var uuid string = strings.Replace(r.URL.Path[1:], "/", "", -1)
-	var path string = fmt.Sprintf("./storage/%s/", uuid)
+	glog.Info(fmt.Sprintf("Retrieve request received: %s", r.URL.Path))
+	var filename string = strings.Replace(r.URL.Path[1:], "/", "", -1)
+	var path string = fmt.Sprintf("./storage/%s", filename)
 
-	glog.Infof(`Route "%s"`, r.URL.Path)
-	glog.Infof(`Retrieving UUID "%s"`, uuid)
 	glog.Infof(`Retrieving Path "%s"`, path)
 
-	files, err := ioutil.ReadDir(path)
+	_, err := os.Stat(path)
 	if err != nil {
-		glog.Errorf(`Error walking filepath "%s"`, path)
+		glog.Errorf(`Error checking filepath "%s"`, path)
 		glog.Errorf("Error: %s", err.Error())
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, "File Not Found.")
 		return
 	}
 
-	if len(files) <= 0 {
-		glog.Errorf(`No files in directory "%s"`, path)
-		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, "File Not Found.")
-		return
-	}
-
-	var filename = files[0].Name()
 	glog.Infof(`Retrieving Filename "%s"`, fmt.Sprintf("./%s", filename))
 
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
-	http.ServeFile(w, r, fmt.Sprintf("./%s/%s", path, filename))
+	ext := filepath.Ext(filename)
+	if ct, ok := customContentType[ext]; ok {
+		glog.Infof(`Setting custom Content-Type "%s"`, ct)
+		w.Header().Set("Content-Type", ct)
+		w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%s", filename))
+	}
+	http.ServeFile(w, r, path)
 }
