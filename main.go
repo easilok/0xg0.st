@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
+	"log"
 	"math/rand"
 	"net/http"
 	"os"
@@ -50,7 +51,9 @@ func main() {
 	flag.Parse()
 	glog.Flush()
 
+	glog.Infof(`Starting Server on port "%d"`, port)
+
 	// Routing
 	http.HandleFunc("/", router)
-	http.ListenAndServe(fmt.Sprintf("%s:%d",*host,*port), nil)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf("%s:%d", *host, *port), nil))
 }
